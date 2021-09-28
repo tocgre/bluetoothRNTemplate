@@ -181,10 +181,8 @@ export default function AppController (): JSX.Element {
       setAppState({ type: APP_ACTIONS.UPDATE_DEVICE_INFO, value: { famaState: buffer.readUInt16BE() } })
       if ((buffer.readUInt16BE() & 0x0001) === 0x0001) {
         console.log('Pedal pushed')
-        setAppState({ type: APP_ACTIONS.IS_PEDAL_MODAL_VISIBLE, value: false })
       } else {
         console.log('Pedal released')
-        setAppState({ type: APP_ACTIONS.IS_PEDAL_MODAL_VISIBLE, value: true })
       }
     }
     if (data.characteristic === FAMA_SCREEN_SERVICE.CHARACTERISTICS.RELAY_HOLDING_TIME) {
@@ -277,7 +275,7 @@ export default function AppController (): JSX.Element {
     return true
   }
 
-  async function bleConnect (): Promise<boolean | undefined> {
+  async function bleConnect (): Promise<void> {
     if (!appState.isConnecting) {
       try {
         setAppState({ type: APP_ACTIONS.IS_CONNECTING, value: true })
@@ -289,28 +287,6 @@ export default function AppController (): JSX.Element {
           setAppState({ type: APP_ACTIONS.IS_CONNECTED, value: true })
           setAppState({ type: APP_ACTIONS.UPDATE_DEVICE_INFO, value: { name: appState.selectedDevice.deviceName, id: appState.selectedDevice.id } })
           console.log('Connected to ' + appState.selectedDevice.deviceName + ', ID: ' + appState.selectedDevice.id)
-          if (Platform.OS === 'android') {
-            try {
-              await BleManager.createBond(appState.selectedDevice.id)
-              console.log('Device bonded !')
-            } catch (error) {
-              setAppState({ type: APP_ACTIONS.IS_BONDING_MODAL_VISIBLE, value: true })
-              console.error(error)
-              setAppState({ type: APP_ACTIONS.IS_SHOW_ACTIVITY_INDICATOR, value: false })
-              setAppState({ type: APP_ACTIONS.IS_CONNECTING, value: false })
-              if (appState.selectedDevice.id !== null && !appState.isDisconnecting) {
-                try {
-                  setAppState({ type: APP_ACTIONS.IS_DISCONNECTING, value: true })
-                  await BleManager.disconnect(appState.selectedDevice.id)
-                } catch (error) {
-                  setAppState({ type: APP_ACTIONS.IS_DISCONNECTING, value: false })
-                  console.error('Pb disconnecting: ', error)
-                }
-              }
-              history.replace('/Scanning')
-              return false
-            }
-          }
           /* Test read current RSSI value */
           await BleManager.retrieveServices(appState.selectedDevice.id)
           /* Write password */

@@ -15,6 +15,7 @@ type selectDeviceType = (device: IStoredDevice) => void
 interface IScanningProps {
   onCancelPress: () => void
   onSelectDevice: selectDeviceType
+  onBackPress: () => void
   scannedDevices: IStoredDevice[]
   isScanning: boolean
   bleDisconnect: () => void
@@ -42,6 +43,7 @@ export default function Scanning (props: IScanningProps): JSX.Element {
   const {
     onCancelPress,
     onSelectDevice,
+    onBackPress,
     scannedDevices,
     isScanning,
     bleDisconnect,
@@ -66,9 +68,8 @@ export default function Scanning (props: IScanningProps): JSX.Element {
     <View style={[styles.background, { backgroundColor: colors.background }]}>
       <Header
         title={'SCAN'}
-        returnArrow={false}
-        repair={false}
-        onBackPress={() => null}
+        returnArrow={true}
+        onBackPress={onBackPress}
         bleDisconnect={bleDisconnect}
       />
       {showActivityIndicator

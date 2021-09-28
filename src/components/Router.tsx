@@ -17,6 +17,7 @@ export default function Router (props: IRouterProps): JSX.Element {
           scannedDevices={props.scannedDevices}
           onSelectDevice={props.handleSelectDevicePress}
           onCancelPress={props.onCancelPress}
+          onBackPress={props.handleBackpress}
           isScanning={props.isScanning}
           bleDisconnect={props.bleDisconnect}
           checkBleState={props.checkBleState}
