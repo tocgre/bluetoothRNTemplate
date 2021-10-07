@@ -1,49 +1,47 @@
-import React, { useEffect, useReducer } from 'react'
-import {
-  NativeModules,
-  NativeEventEmitter,
-  Platform,
-  EmitterSubscription,
-  BackHandler,
-  NativeEventSubscription
-} from 'react-native'
-import Router from './components/Router'
-import { useLocation, useHistory } from 'react-router-native'
-import BleManager from 'react-native-ble-manager'
-import { Map } from 'immutable'
-import { mapReducer, MAP_ACTIONS, IActions } from './helpers/map'
-import { NullableTimeout, IStoredDevice, IDeviceInformation, IDiscoveredPeripheral, IUpdateValueForCharacteristic, IDisconnectPeripheral } from './App.interfaces'
-import {
-  ADVEEZ_COMPANY_ID,
-  FAMA_SCREEN_SERVICE,
-  AUTHENTICATION_PASSWORD,
-  FAMA_SCRREEN_DEVICE_ID
-} from './constants'
-import GPSState from 'react-native-gps-state'
-import bigInt from 'big-integer'
-import { appReducer, APP_ACTIONS } from './helpers/reducers'
-import appInfos from '../app.json'
-import { calculateLastSeen } from './helpers/datetime'
-import { Buffer } from 'buffer'
+/**
+ * Sample React Native App
+ * https://github.com/facebook/react-native
+ *
+ * @format
+ * @flow strict-local
+ */
 
-const BleManagerModule = NativeModules.BleManager
-const bleManagerEmitter = new NativeEventEmitter(BleManagerModule)
+import React, { useState, useReducer, useEffect } from 'react'
+import {
+} from 'react-native-paper'
+
+import { useLocation, useHistory } from 'react-router-native'
+
+import { NullableTimeout, IStoredDevice, IDeviceInformation } from './App.interfaces'
+
+import appInfos from '../app.json'
+import { IDevice } from './BleManagerPlx.interfaces'
+import BleManager from './BleManager'
+import { calculateLastSeen } from './helpers/datetime'
+import { IActions, mapReducer, MAP_ACTIONS } from './helpers/map'
+import { Map } from 'immutable'
+import { Buffer } from 'buffer'
+import AdveezConfigController from './controllers/AdveezConfig'
+import { ADVEEZ_COMPANY_ID } from './constants'
+import { appReducer, APP_ACTIONS } from './helpers/reducers'
+import GPSState from 'react-native-gps-state'
+import Router from './components/Router'
 
 const _appInfos = {
   name: appInfos.displayName,
   version: appInfos.version
 }
 
-const defaultDeviceInfomation: IDeviceInformation = {
-  deviceName: '',
-  id: '',
-  famaState: 0x00,
-  relayHoldingTime: 0x00
+const defaultDeviceInfomations = {
+  name: 'Loading...',
+  adveezConfigController: null
 }
+
+const bleManager = new BleManager()
 
 const appInitState = {
   selectedDevice: null,
-  deviceInformation: defaultDeviceInfomation,
+  deviceInformation: defaultDeviceInfomations,
   isScanning: false,
   isConnected: false,
   pedalModalVisible: false,
@@ -54,148 +52,139 @@ const appInitState = {
   bondingModalVisible: false,
   isConnecting: false,
   isScanningStarted: false,
-  isDisconnecting: false,
-  isHardwareBackPressed: false
+  isDisconnecting: false
+}
+
+const acceptDevice = (device: IDevice): boolean => {
+  let accepted = false
+  let companyId = 0
+  let deviceId = 0
+  if (device !== null) {
+    if (device.manufacturerData !== null && device.manufacturerData !== undefined) {
+      const buffer = Buffer.from(device.manufacturerData, 'base64')
+      companyId = buffer.readUInt16BE(0)
+      if (buffer.includes('ADV')) {
+        if (buffer.indexOf('ADV') + 3 <= buffer.length - 1) {
+          deviceId = buffer.readUInt8(buffer.indexOf('ADV') + 3)
+        }
+      }
+      if (companyId === ADVEEZ_COMPANY_ID && buffer.includes('ADV') && deviceId === 0x03) {
+        accepted = true
+      }
+    }
+  }
+
+  return accepted
 }
 
 type TDispatch = (state: any, action: IActions) => Map<number, IStoredDevice>
 
 export default function AppController (): JSX.Element {
   const [scannedDevices, dispatchDevice] = useReducer<TDispatch, Map<number, IStoredDevice>>(mapReducer, Map(), () => Map())
+  const [deviceInformations, setDeviceInformations] = useState<IDeviceInformation>(defaultDeviceInfomations)
   const [appState, setAppState] = useReducer(appReducer, appInitState)
   const location = useLocation()
   const history = useHistory()
 
-  useEffect(() => {
-    let discoverPeripheralSubscription: EmitterSubscription
-    let stopScanSubscription: EmitterSubscription
-    let disconnectedPeripheralSubscription: EmitterSubscription
-    let updateValueForCharacteristicSubscription: EmitterSubscription
-    let updateBleStateSubscription: EmitterSubscription
-    let backHandlerSubscription: NativeEventSubscription
-    BleManager.start({ showAlert: false }).then(() => {
-      discoverPeripheralSubscription = bleManagerEmitter.addListener('BleManagerDiscoverPeripheral', handleDiscoverPeripheral)
-      stopScanSubscription = bleManagerEmitter.addListener('BleManagerStopScan', handleStopScan)
-      disconnectedPeripheralSubscription = bleManagerEmitter.addListener('BleManagerDisconnectPeripheral', handleDisconnectedPeripheral)
-      updateValueForCharacteristicSubscription = bleManagerEmitter.addListener('BleManagerDidUpdateValueForCharacteristic', handleUpdateValueForCharacteristic)
-      updateBleStateSubscription = bleManagerEmitter.addListener('BleManagerDidUpdateState', handleUpdateBleState)
-      GPSState.addListener(handleUpdateGpsState)
-      if (Platform.OS === 'android') {
-        backHandlerSubscription = BackHandler.addEventListener('hardwareBackPress', handleHardwareBackPress)
-      }
-    }).catch((e: any) => console.error(e))
+  // useEffect(() => {
+  //   //GPSState.addListener(handleUpdateGpsState)
 
-    return () => {
-      discoverPeripheralSubscription.remove()
-      stopScanSubscription.remove()
-      disconnectedPeripheralSubscription.remove()
-      updateValueForCharacteristicSubscription.remove()
-      updateBleStateSubscription.remove()
-      GPSState.removeListener()
-      if (Platform.OS === 'android') {
-        backHandlerSubscription.remove()
-      }
-    }
-  }, [])
+  //   return () => {
+  //     GPSState.removeListener()
+  //   }
+  // }, [])
 
   useEffect(() => {
     let intervall: NullableTimeout = null
-    if (location.pathname === '/Scanning' && appState.isBleEnabled) {
-      startScan().then(() => {
-        intervall = setInterval(() => {
-          dispatchDevice({
-            type: MAP_ACTIONS.UPDATE_ALL,
-            update: ({ deviceName, id, rssi, lastSeenDate, uidFama, tagType, tagId }) => {
-              return {
-                deviceName: deviceName,
-                id: id,
-                rssi: rssi,
-                lastSeenDate: lastSeenDate,
-                lastSeen: calculateLastSeen(lastSeenDate),
-                uidFama: uidFama,
-                tagType: tagType,
-                tagId: tagId
+    if (location.pathname === '/Scanning') {
+      bleManager.startScan(null, acceptDevice, handleNewDevice)
+      intervall = setInterval(() => {
+        dispatchDevice({
+          type: MAP_ACTIONS.UPDATE_ALL,
+          update: ({ device, informations }) => {
+            return {
+              device: device,
+              informations: {
+                lastSeenDate: informations.lastSeenDate,
+                lastSeen: calculateLastSeen(informations.lastSeenDate)
               }
             }
-          })
-        }, 1000)
-      }).catch((e) => console.error(e))
+          }
+        })
+      }, 1000)
     } else {
-      if (appState.isScanning) {
-        BleManager.stopScan().then().catch((e: any) => console.error(e))
-      }
+      bleManager.stopScan()
     }
     return () => {
       if (intervall != null) {
         clearInterval(intervall)
       }
     }
-  }, [location, appState.isBleEnabled])
-
-  useEffect(() => {
-    if (appState.isHardwareBackPressed && Platform.OS === 'android') {
-      switch (location.pathname) {
-        case '/':
-          BackHandler.exitApp()
-          break
-        case '/Scanning':
-          history.goBack()
-          break
-        default:
-          break
-      }
-      setAppState({ type: APP_ACTIONS.IS_HARDWARE_BACK_PRESSED, value: false })
-    }
-  }, [appState.isHardwareBackPressed])
+  }, [location])
 
   useEffect(() => {
     if (appState.selectedDevice !== null) {
-      bleConnect().then().catch((e) => console.error(e))
+      setAppState({ type: APP_ACTIONS.IS_CONNECTING, value: true });
+      (async function loadDeviceInformation (): Promise<void> {
+        const infos: IDeviceInformation = { ...defaultDeviceInfomations }
+        try {
+          if (appState.selectedDevice?.device !== undefined) {
+            await bleManager.connect(appState.selectedDevice.device, () => history.push('/Scanning'))
+          }
+          if (bleManager.isConnected()) {
+            if (appState.selectedDevice?.device.localName !== null && appState.selectedDevice?.device.localName !== undefined) {
+              infos.name = appState.selectedDevice.device.localName
+            }
+            infos.adveezConfigController = new AdveezConfigController(bleManager)
+          }
+          setDeviceInformations(infos)
+        } catch (error) {
+          setAppState({ type: APP_ACTIONS.IS_SHOW_ACTIVITY_INDICATOR, value: false })
+          setAppState({ type: APP_ACTIONS.IS_CONNECTING, value: false })
+          console.log(error)
+        }
+      })().then().catch((e) => console.error(e))
+
+      return () => {
+        if (bleManager.isConnected()) {
+          bleManager.disconnect().then().catch((e) => console.error(e))
+        }
+      }
     }
   }, [appState.selectedDevice])
 
-  const startScan = async (): Promise<void> => {
-    if (!appState.isScanning && !appState.isScanningStarted) {
+  function handleNewDevice (device: IDevice): void {
+    const newDevice: IStoredDevice = {
+      device: device,
+      informations: {
+        lastSeenDate: new Date(),
+        lastSeen: 0
+      },
+      rssi: device.rssi
+    }
+
+    dispatchDevice({
+      type: MAP_ACTIONS.ADD,
+      key: device.id,
+      value: newDevice
+    })
+  }
+
+  async function bleDisconnect (): Promise<void> {
+    if (appState.isConnected && appState.selectedDevice != null && !appState.isDisconnecting) {
       try {
-        setAppState({ type: APP_ACTIONS.IS_SCANNING_STARTED, value: true })
-        await BleManager.scan([], 0, true)
-        setAppState({ type: APP_ACTIONS.IS_SCANNING_STARTED, value: false })
-        console.log('Scanning...')
-        setAppState({ type: APP_ACTIONS.IS_SCANNING, value: true })
+        setAppState({ type: APP_ACTIONS.IS_DISCONNECTING, value: true })
+        await bleManager.disconnect()
       } catch (error) {
-        setAppState({ type: APP_ACTIONS.IS_SCANNING_STARTED, value: false })
-        console.error('Pb Starting scan: ', error)
+        setAppState({ type: APP_ACTIONS.IS_DISCONNECTING, value: false })
+        console.error('Pb disconnecting: ', error)
       }
     }
   }
 
-  const handleDisconnectedPeripheral = (data: IDisconnectPeripheral): void => {
-    console.log('Disconnected from ', data.peripheral)
-    setAppState({ type: APP_ACTIONS.IS_CONNECTED, value: false })
-    setAppState({ type: APP_ACTIONS.IS_DISCONNECTING, value: false })
-  }
-
-  const handleUpdateValueForCharacteristic = (data: IUpdateValueForCharacteristic): void => {
-    const buffer = Buffer.from(data.value)
-    if (data.characteristic === FAMA_SCREEN_SERVICE.CHARACTERISTICS.FAMA_STATE) {
-      setAppState({ type: APP_ACTIONS.UPDATE_DEVICE_INFO, value: { famaState: buffer.readUInt16BE() } })
-      if ((buffer.readUInt16BE() & 0x0001) === 0x0001) {
-        console.log('Pedal pushed')
-      } else {
-        console.log('Pedal released')
-      }
-    }
-    if (data.characteristic === FAMA_SCREEN_SERVICE.CHARACTERISTICS.RELAY_HOLDING_TIME) {
-      setAppState({ type: APP_ACTIONS.UPDATE_DEVICE_INFO, value: { relayHoldingTime: buffer.readUInt16BE() } })
-    }
-  }
-
-  const handleUpdateBleState = (data: any): void => {
-    if (data.state === 'on') {
-      setAppState({ type: APP_ACTIONS.IS_BLE_ENABLED, value: true })
-    } else {
-      setAppState({ type: APP_ACTIONS.IS_BLE_ENABLED, value: false })
-    }
+  function handleSelectDevicePress (device: IStoredDevice): void {
+    setAppState({ type: APP_ACTIONS.IS_SHOW_ACTIVITY_INDICATOR, value: true })
+    setAppState({ type: APP_ACTIONS.UPDATE_SELECTED_DEVICE, value: device })
   }
 
   const handleUpdateGpsState = (status: number): void => {
@@ -206,161 +195,12 @@ export default function AppController (): JSX.Element {
     }
   }
 
-  function checkBleState (): void {
-    BleManager.checkState()
-  }
-
-  const handleStopScan = (): void => {
-    console.log('Scan is stopped')
-    setAppState({ type: APP_ACTIONS.IS_SCANNING, value: false })
-    dispatchDevice({
-      type: MAP_ACTIONS.RESET
-    })
-  }
-
-  const handleDiscoverPeripheral = (peripheral: IDiscoveredPeripheral): void => {
-    if (peripheral.name === null) {
-      peripheral.name = 'No Name'
-    }
-    const buffer = Buffer.from(peripheral.advertising.manufacturerData.bytes, 'base64')
-    let index = 0
-    let size = 0
-    let manufacturerDataFound = false
-    let manufacturerData = Buffer.alloc(32)
-    while (buffer[index] !== 0x00 && !manufacturerDataFound) {
-      size = buffer.readUInt8(index)
-      if (buffer.readUInt8(index + 1) === 0xFF) {
-        manufacturerData = buffer.subarray(index + 2, index + 2 + size - 1)
-        manufacturerDataFound = true
-      } else {
-        index += size + 1
-      }
-    }
-    const companyId = manufacturerData.readUInt16BE(0)
-    let deviceId = 0
-    if (buffer.includes('ADV')) {
-      if (buffer.indexOf('ADV') + 3 <= buffer.length - 1) {
-        deviceId = buffer.readUInt8(buffer.indexOf('ADV') + 3)
-      }
-    }
-    if (companyId === ADVEEZ_COMPANY_ID && buffer.includes('ADV') && deviceId === FAMA_SCRREEN_DEVICE_ID) {
-      let uidFama = 0
-      let tagType = 0
-      let tagId = bigInt(0).toString()
-      if (manufacturerData.length >= 19) {
-        uidFama = manufacturerData.readUInt32BE(6)
-        tagType = manufacturerData.readUInt8(10)
-        tagId = bigInt(manufacturerData.toString('hex', 11, 19), 16).toString()
-      }
-      const newDevice: IStoredDevice = {
-        deviceName: peripheral.name,
-        id: peripheral.id,
-        rssi: peripheral.rssi,
-        lastSeenDate: new Date(),
-        lastSeen: 0,
-        uidFama: uidFama,
-        tagType: tagType,
-        tagId: tagId
-      }
-      dispatchDevice({
-        type: MAP_ACTIONS.ADD,
-        key: peripheral.id,
-        value: newDevice
-      })
-    }
-  }
-
-  function handleHardwareBackPress (): boolean {
-    setAppState({ type: APP_ACTIONS.IS_HARDWARE_BACK_PRESSED, value: true })
-    return true
-  }
-
-  async function bleConnect (): Promise<void> {
-    if (!appState.isConnecting) {
-      try {
-        setAppState({ type: APP_ACTIONS.IS_CONNECTING, value: true })
-        if (appState.isScanning) {
-          await BleManager.stopScan()
-        }
-        if (appState.selectedDevice !== null) {
-          await BleManager.connect(appState.selectedDevice.id)
-          setAppState({ type: APP_ACTIONS.IS_CONNECTED, value: true })
-          setAppState({ type: APP_ACTIONS.UPDATE_DEVICE_INFO, value: { name: appState.selectedDevice.deviceName, id: appState.selectedDevice.id } })
-          console.log('Connected to ' + appState.selectedDevice.deviceName + ', ID: ' + appState.selectedDevice.id)
-          /* Test read current RSSI value */
-          await BleManager.retrieveServices(appState.selectedDevice.id)
-          /* Write password */
-          const auth = Buffer.from(AUTHENTICATION_PASSWORD)
-          const authArray = []
-          for (const byte of auth) {
-            authArray.push(byte)
-          }
-          await BleManager.write(appState.selectedDevice.id, FAMA_SCREEN_SERVICE.UUID, FAMA_SCREEN_SERVICE.CHARACTERISTICS.PASSWORD, authArray)
-          /* Read FAMA characteristics */
-          const value = await BleManager.read(appState.selectedDevice.id, FAMA_SCREEN_SERVICE.UUID, FAMA_SCREEN_SERVICE.CHARACTERISTICS.FAMA_STATE)
-          const buffer1 = Buffer.from(value)
-          setAppState({ type: APP_ACTIONS.UPDATE_DEVICE_INFO, value: { famaState: buffer1.readUInt16BE() } })
-          /* Register to FAMA_STATE notification */
-          await BleManager.startNotification(appState.selectedDevice.id, FAMA_SCREEN_SERVICE.UUID, FAMA_SCREEN_SERVICE.CHARACTERISTICS.FAMA_STATE)
-          /* Read Relay Holding Time characteristic */
-          const value2 = await BleManager.read(appState.selectedDevice.id, FAMA_SCREEN_SERVICE.UUID, FAMA_SCREEN_SERVICE.CHARACTERISTICS.RELAY_HOLDING_TIME)
-          const buffer2 = Buffer.from(value2)
-          setAppState({ type: APP_ACTIONS.UPDATE_DEVICE_INFO, value: { relayHoldingTime: buffer2.readUInt16BE() } })
-          /* Register to RELAY_HOLDING_TIME notification */
-          await BleManager.startNotification(appState.selectedDevice.id, FAMA_SCREEN_SERVICE.UUID, FAMA_SCREEN_SERVICE.CHARACTERISTICS.RELAY_HOLDING_TIME)
-          setAppState({ type: APP_ACTIONS.IS_SHOW_ACTIVITY_INDICATOR, value: false })
-          setAppState({ type: APP_ACTIONS.IS_CONNECTING, value: false })
-          history.push('/Checklist')
-        }
-      } catch (error) {
-        console.error(error)
-        setAppState({ type: APP_ACTIONS.IS_SHOW_ACTIVITY_INDICATOR, value: false })
-        setAppState({ type: APP_ACTIONS.IS_CONNECTING, value: false })
-        if (appState.selectedDevice != null && !appState.isDisconnecting) {
-          try {
-            setAppState({ type: APP_ACTIONS.IS_DISCONNECTING, value: true })
-            await BleManager.disconnect(appState.selectedDevice.id)
-          } catch (error) {
-            setAppState({ type: APP_ACTIONS.IS_DISCONNECTING, value: false })
-            console.error('Pb disconnecting: ', error)
-          }
-        }
-        history.replace('/Scanning')
-      }
-    }
-  }
-
-  async function bleDisconnect (): Promise<void> {
-    if (appState.isConnected && appState.selectedDevice != null && !appState.isDisconnecting) {
-      try {
-        setAppState({ type: APP_ACTIONS.IS_DISCONNECTING, value: true })
-        await BleManager.disconnect(appState.selectedDevice.id)
-      } catch (error) {
-        setAppState({ type: APP_ACTIONS.IS_DISCONNECTING, value: false })
-        console.error('Pb disconnecting: ', error)
-      }
-    }
-  }
-
   function checkGpsState (): void {
-    GPSState.getStatus().then(handleUpdateGpsState).catch((e) => console.error(e))
-  }
-
-  function handleSelectDevicePress (device: IStoredDevice): void {
-    setAppState({ type: APP_ACTIONS.IS_SHOW_ACTIVITY_INDICATOR, value: true })
-    setAppState({ type: APP_ACTIONS.UPDATE_SELECTED_DEVICE, value: device })
+    GPSState.getStatus().then(handleUpdateGpsState).catch((e: any) => console.error(e))
   }
 
   function handleBackpress (): void {
     history.goBack()
-  }
-
-  function onCancelPress (): void {
-    if (appState.isScanning) {
-      BleManager.stopScan().then().catch((e) => console.error(e))
-    } else {
-      startScan().then().catch((e) => console.error(e))
-    }
   }
 
   return (
@@ -372,14 +212,12 @@ export default function AppController (): JSX.Element {
       isBleEnabled={appState.isBleEnabled}
       isGpsEnabled={appState.isGpsEnabled}
       showActivityIndicator={appState.showActivityIndicator}
-      bondingModalVisible={appState.bondingModalVisible}
-      pedalModalVisible={appState.pedalModalVisible}
-      checkBleState={checkBleState}
+      checkBleState={() => null}
       checkGpsState={checkGpsState}
       handleSelectDevicePress={handleSelectDevicePress}
       handleBackpress={handleBackpress}
-      handleExitGsePress={() => null}
-      onCancelPress={onCancelPress}
+      handleExitDevicePress={() => null}
+      onCancelPress={() => null}
       bleDisconnect={bleDisconnect}
     />
   )

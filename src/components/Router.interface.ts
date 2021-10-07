@@ -1,4 +1,4 @@
-import { IStoredDevice } from '../App.interfaces'
+import { DataType, IStoredDevice } from '../App.interfaces'
 
 export interface IRouterProps {
   _appInfos: {
@@ -11,13 +11,11 @@ export interface IRouterProps {
   isBleEnabled: boolean
   isGpsEnabled: boolean
   showActivityIndicator: boolean
-  bondingModalVisible: boolean
-  pedalModalVisible: boolean
   checkBleState: () => void
   checkGpsState: () => void
   handleSelectDevicePress: (device: IStoredDevice) => void
   handleBackpress: () => void
-  handleExitGsePress: () => void
+  handleExitDevicePress: () => void
   onCancelPress: () => void
   bleDisconnect: () => Promise<void>
 }

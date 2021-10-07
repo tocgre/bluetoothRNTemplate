@@ -1,0 +1,53 @@
+// export const BINAREEZ_SERVER_URL = 'http://localhost:3005'
+export const BINAREEZ_SERVER_URL = 'https://binareez.user.adveez.com'
+export const API_KEY = 'kidDaukikAyghouvNamDuebdovkubrigevyefthokDylchyafWyGrifdiWifrawz'
+
+export const AUTHENTICATION_PASSWORD = 'qKwyZE3bNW4w'
+
+export const LAST_SEEN_DISAPPEAR_THRESHOLD = 5
+export const LAST_SEEN_CLICKABLE_THRESHOLD = 3
+
+export const ADVEEZ_CONFIG_SERVICE = {
+  UUID: '0000aa00-1212-efde-1523-785fef13d123',
+  CHARACTERISTICS: {
+    POWER: '0000aa01-1212-efde-1523-785fef13d123',
+    NAME: '0000aa02-1212-efde-1523-785fef13d123',
+    RELAY1: '0000aa03-1212-efde-1523-785fef13d123',
+    RELAY2: '0000aa04-1212-efde-1523-785fef13d123',
+    AUTHENTICATION: '0000aa05-1212-efde-1523-785fef13d123',
+    DEVEUI: '0000aa06-1212-efde-1523-785fef13d123'
+  }
+}
+
+export const ADVEEZ_INFOS_SERVICE = {
+  UUID: '0000bb00-1212-efde-1523-785fef13d123',
+  CHARACTERISTICS: {
+    FIRMWARE_VERSION: '0000bb01-1212-efde-1523-785fef13d123',
+    EEPROM_STATUS: '0000bb02-1212-efde-1523-785fef13d123',
+    NB_CONFIG: '0000bb03-1212-efde-1523-785fef13d123',
+    LORAWAN_STATUS: '0000bb04-1212-efde-1523-785fef13d123',
+    BATTERY_LIFETIME: '0000bb05-1212-efde-1523-785fef13d123'
+  }
+}
+
+export const BATTERY_LEVEL_SERVICE = {
+  UUID: '0000180f-0000-1000-8000-00805f9b34fb',
+  CHARACTERISTICS: {
+    BATTERY_LEVEL: '00002a19-0000-1000-8000-00805f9b34fb'
+  }
+}
+
+export const DFU = {
+  UUID: '0000fe59-0000-1000-8000-00805f9b34fb',
+  CHARACTERISTICS: {
+    DFU_CONTROL_POINT: '8ec90001-f315-4f60-9fb8-838830daea50',
+    DFU_PACKET: '8ec90002-f315-4f60-9fb8-838830daea50',
+    BUTTONLESS_DFU_WITHOUT_BOUNDS: '8ec90003-f315-4f60-9fb8-838830daea50'
+  }
+}
+
+export const ADVEEZ_COMPANY_ID = 0x8E09
+
+export const POWER_TYPES = ['-40', '-20', '-16', '-12', '-8', '-4', '0', '+3', '+4']
+
+export const WINDOW_OFFSET = 24

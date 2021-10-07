@@ -6,6 +6,7 @@ import Header from './common/Header'
 import Labelized from './common/Labelized'
 import IconBrand from 'react-native-vector-icons/FontAwesome5'
 import { LAST_SEEN_DISAPPEAR_THRESHOLD, LAST_SEEN_CLICKABLE_THRESHOLD, WINDOW_OFFSET } from '../constants'
+import { useHistory } from 'react-router'
 
 const { height } = Dimensions.get('window')
 const finalHeigth = height - WINDOW_OFFSET
@@ -54,6 +55,7 @@ export default function Scanning (props: IScanningProps): JSX.Element {
     showActivityIndicator
   } = props
   const { colors } = useTheme()
+  const history = useHistory()
 
   useEffect(() => {
     checkBleState()
@@ -69,7 +71,7 @@ export default function Scanning (props: IScanningProps): JSX.Element {
       <Header
         title={'SCAN'}
         returnArrow={true}
-        onBackPress={onBackPress}
+        onBackPress={() => history.push('/')}
         bleDisconnect={bleDisconnect}
       />
       {showActivityIndicator
